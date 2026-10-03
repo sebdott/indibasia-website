@@ -1,0 +1,9 @@
+.tools/
+storage/
+public/assets/
+*.log
+*.pid
+node_modules/
+pw.txt
+.env
+public/uploads/

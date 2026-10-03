@@ -1,0 +1,14 @@
+.git/
+.tools/
+node_modules/
+storage/
+public/assets/
+*.log
+*.pid
+*.zip
+*.ps1
+README.md
+Makefile
+pw.txt
+.env
+public/uploads/

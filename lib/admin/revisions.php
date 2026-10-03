@@ -1,0 +1,10 @@
+<?php
+declare(strict_types=1);
+try {
+    $page = cmsPage((int)($_GET['id'] ?? 0)); $number = max(1,(int)($_GET['page'] ?? 1)); $offset = ($number-1)*20;
+    $query = $db->prepare('SELECT r.id, r.version, r.created_at, u.username FROM indiba_cms_revisions r LEFT JOIN indiba_cms_users u ON u.id = r.user_id WHERE r.page_id = ? ORDER BY r.id DESC LIMIT 21 OFFSET ' . $offset); $query->execute([$page['id']]); $revisions = $query->fetchAll();
+?>
+<div class="editor-top"><a href="/admin/?view=edit&id=<?= $page['id'] ?>">← Back to editor</a><span><?= cmsEscape($page['title']) ?></span></div><section class="panel"><h2>Previous versions</h2><p class="muted">Restoring a revision saves it as a draft and keeps the current page in history. The current page path stays unchanged.</p><?php if (!$revisions): ?><p class="empty">Versions will appear here after your first change.</p><?php endif ?>
+<?php foreach (array_slice($revisions,0,20) as $revision): ?><div class="revision-row"><div><strong>Version <?= $revision['version'] ?></strong><small><?= cmsEscape($revision['created_at']) ?> · <?= cmsEscape($revision['username'] ?? 'System') ?></small></div><form method="post" data-confirm="Restore this version as a draft?"><?= csrfInput() ?><input type="hidden" name="action" value="restore_revision"><input type="hidden" name="id" value="<?= $page['id'] ?>"><input type="hidden" name="version" value="<?= $page['version'] ?>"><input type="hidden" name="revision_id" value="<?= $revision['id'] ?>"><button class="secondary">Restore version</button></form></div><?php endforeach ?></section>
+<div class="pagination"><span>Page <?= $number ?></span><div><?php if ($number>1): ?><a href="?view=revisions&id=<?= $page['id'] ?>&page=<?= $number-1 ?>">← Previous</a><?php endif ?><?php if (count($revisions)>20): ?><a href="?view=revisions&id=<?= $page['id'] ?>&page=<?= $number+1 ?>">Next →</a><?php endif ?></div></div>
+<?php } catch (RuntimeException $e) { ?><div class="alert error"><?= cmsEscape($e->getMessage()) ?></div><?php } ?>

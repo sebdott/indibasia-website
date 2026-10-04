@@ -9,8 +9,12 @@ RUN a2enmod rewrite \
 
 COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 COPY docker/php.ini /usr/local/etc/php/conf.d/indiba.ini
+RUN mkdir -p /var/lib/php/sessions \
+    && chown www-data:www-data /var/lib/php/sessions \
+    && chmod 700 /var/lib/php/sessions
 COPY config.php ./
 COPY lib/ ./lib/
+COPY database/ ./database/
 COPY locales/ ./locales/
 COPY public/ ./public/
 COPY tools/ ./tools/

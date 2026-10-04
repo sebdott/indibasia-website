@@ -11,4 +11,5 @@ README.md
 Makefile
 pw.txt
 .env
+.env.*
 public/uploads/

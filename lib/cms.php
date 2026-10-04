@@ -52,7 +52,8 @@ function cmsImageUrl(string $url): string {
     throw new RuntimeException('Choose a local media URL or an HTTPS image URL.');
 }
 function cmsServePage(string $route): bool {
-    if (getenv('CMS_ENABLED') !== '1' && !is_file(dirname(__DIR__) . '/storage/cms-installed.json')) return false;
+    $installedFile = getenv('CMS_INSTALL_FILE') ?: dirname(__DIR__) . '/storage/cms-installed.json';
+    if (getenv('CMS_ENABLED') !== '1' && !is_file($installedFile)) return false;
     try {
         $query = database()->prepare('SELECT * FROM indiba_cms_pages WHERE route = ?');
         $query->execute([$route]); $page = $query->fetch();

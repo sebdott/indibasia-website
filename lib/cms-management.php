@@ -1,15 +1,12 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/cms.php';
+require_once __DIR__ . '/migrations.php';
+require_once __DIR__ . '/content-types.php';
+require_once __DIR__ . '/cms-banner.php';
 
 function cmsUpgrade(): void {
-    $db = database();
-    $columns = $db->query('SHOW COLUMNS FROM indiba_cms_pages')->fetchAll(PDO::FETCH_COLUMN);
-    foreach (['seo_title' => 'VARCHAR(500) NULL', 'meta_description' => 'TEXT NULL', 'group_name' => "VARCHAR(100) NOT NULL DEFAULT 'General'"] as $name => $definition) {
-        if (!in_array($name, $columns, true)) $db->exec("ALTER TABLE indiba_cms_pages ADD COLUMN $name $definition");
-    }
-    $db->exec('CREATE TABLE IF NOT EXISTS indiba_cms_revisions (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, page_id BIGINT UNSIGNED NOT NULL, version INT NOT NULL, data MEDIUMTEXT NOT NULL, user_id BIGINT UNSIGNED NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX page_history (page_id, id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
-    $db->exec('CREATE TABLE IF NOT EXISTS indiba_cms_redirects (route VARCHAR(700) NOT NULL PRIMARY KEY, page_id BIGINT UNSIGNED NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+    databaseMigrate(database());
 }
 
 function cmsRevision(array $page): void {
@@ -30,14 +27,15 @@ function cmsSave(array $page, array $changes, int $version, string $action): voi
         $query = $db->prepare('SELECT * FROM indiba_cms_pages WHERE id = ? FOR UPDATE'); $query->execute([$page['id']]); $current = $query->fetch();
         if (!$current || (int)$current['version'] !== $version) throw new RuntimeException('Someone else changed this page. Reload before saving.');
         $next = array_replace($current, $changes); cmsRouteAvailable($next['route'], (int)$current['id']);
+        if (!array_key_exists($next['content_type'], cmsContentTypes())) throw new RuntimeException('Choose a valid content section.');
         if ($next['route'] !== $current['route']) {
             if (in_array($current['route'], ['/', '/asia/', '/us/'], true)) throw new RuntimeException('The regional homepage path must stay unchanged.');
             $db->prepare('DELETE FROM indiba_cms_redirects WHERE route = ? AND page_id = ?')->execute([$next['route'], $current['id']]);
             $db->prepare('INSERT INTO indiba_cms_redirects (route, page_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE page_id = VALUES(page_id)')->execute([$current['route'], $current['id']]);
         }
         cmsRevision($current);
-        $db->prepare('UPDATE indiba_cms_pages SET title = ?, route = ?, html = ?, status = ?, seo_title = ?, meta_description = ?, group_name = ?, version = version + 1 WHERE id = ?')->execute([
-            $next['title'], $next['route'], $next['html'], $next['status'], $next['seo_title'], $next['meta_description'], $next['group_name'], $current['id'],
+        $db->prepare('UPDATE indiba_cms_pages SET title = ?, route = ?, html = ?, status = ?, seo_title = ?, meta_description = ?, group_name = ?, content_type = ?, version = version + 1 WHERE id = ?')->execute([
+            $next['title'], $next['route'], $next['html'], $next['status'], $next['seo_title'], $next['meta_description'], $next['group_name'], $next['content_type'], $current['id'],
         ]);
         cmsAudit($action, $next['route']); $db->commit();
     } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }

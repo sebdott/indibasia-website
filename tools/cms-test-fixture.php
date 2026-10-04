@@ -10,7 +10,7 @@ if (in_array('--reset', $argv, true)) {
 }
 $manifest = json_decode(file_get_contents($root . '/storage/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 $pages = [];
-foreach (['/', '/asia/products/ct8/'] as $route) $pages[$route] = $manifest['pages'][$route];
+foreach (['/', '/asia/products/ct8/', '/asia/news/physiotherapy-for-cats-enhancing-feline-wellbeing-with-indibas-radiofrequency/', '/us/events/', '/news/', '/us/event-brands/rehabilitation/', '/events/how-indiba-works-at-a-cellular-level/'] as $route) $pages[$route] = $manifest['pages'][$route];
 $assets = array_slice($manifest['assets'], 0, 3, true);
 file_put_contents($root . '/storage/cms-test-manifest.json', json_encode(['pages' => $pages, 'assets' => $assets], JSON_THROW_ON_ERROR));
 echo "Isolated test import manifest prepared.\n";

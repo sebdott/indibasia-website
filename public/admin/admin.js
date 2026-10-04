@@ -74,7 +74,7 @@ document.querySelectorAll('.add-content-block').forEach(button => button.addEven
 }));
 const titleInput = document.getElementById('new-page-title'); const routeInput = document.getElementById('new-page-route'); let routeTouched = false;
 routeInput?.addEventListener('input', () => {routeTouched = true;});
-titleInput?.addEventListener('input', () => { if (!routeTouched) { const slug = titleInput.value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); routeInput.value = slug ? `/${slug}/` : ''; } });
+titleInput?.addEventListener('input', () => { if (!routeTouched) { const slug = titleInput.value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); routeInput.value = slug ? `${routeInput.dataset.prefix || '/'}${slug}/` : ''; } });
 
 const picker = document.getElementById('media-picker'); let pickerTarget; let pickerPage = 1; let pickerLoading = false; let pickerCallback; let pickerKind = 'image';
 window.cmsOpenMediaPicker = (callback, kind = 'image') => {
@@ -96,7 +96,7 @@ async function loadImages(append = false) {
             const label = document.createElement('span'); label.textContent = item.name;
             button.append(image,label); button.addEventListener('click', () => {
                 if (pickerCallback) {const callback = pickerCallback; pickerCallback = null; callback(item);}
-                else if (pickerTarget) {pickerTarget.value = item.path; const thumbnail = pickerTarget.closest('.image-edit').querySelector('img'); thumbnail.src = item.path; pickerTarget.dispatchEvent(new Event('input', {bubbles:true}));}
+                else if (pickerTarget) {pickerTarget.value = item.path; const thumbnail = pickerTarget.closest('.image-edit')?.querySelector('img'); if (thumbnail) thumbnail.src = item.path; pickerTarget.dispatchEvent(new Event('input', {bubbles:true}));}
                 picker.close();
             }); results.append(button);
         });
@@ -108,3 +108,18 @@ document.getElementById('close-media-picker')?.addEventListener('click', () => p
 document.getElementById('search-media-picker')?.addEventListener('click', () => {pickerPage = 1;loadImages();});
 document.getElementById('picker-query')?.addEventListener('keydown', event => {if (event.key === 'Enter') {event.preventDefault();pickerPage = 1;loadImages();}});
 document.getElementById('picker-more')?.addEventListener('click', () => {pickerPage++;loadImages(true);});
+
+document.querySelectorAll('[data-banner-image]').forEach(input => {
+    input.addEventListener('input', () => {
+        const preview = input.closest('.image-edit').querySelector('.banner-image-preview');
+        const image = preview.querySelector('img'); const empty = preview.querySelector('span');
+        const url = input.value.trim();
+        image.hidden = !url; empty.hidden = !!url;
+        if (url && (/^\/(?:assets|uploads)\//.test(url) || /^https:\/\//i.test(url))) image.src = url;
+        else image.removeAttribute('src');
+    });
+});
+document.querySelectorAll('[data-clear-image]').forEach(button => button.addEventListener('click', () => {
+    const input = document.getElementById(button.dataset.clearImage);
+    input.value = ''; input.dispatchEvent(new Event('input', {bubbles:true}));
+}));

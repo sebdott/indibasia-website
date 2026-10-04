@@ -1,14 +1,69 @@
 name: indiba
 
+x-app: &app
+  image: indiba-web
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    - type: bind
+      source: .
+      target: /var/www/indiba
+    - php-sessions:/var/lib/php/sessions
+  environment:
+    DB_HOST: db
+    DB_PORT: "3306"
+    DB_DATABASE: ${LOCAL_DB_DATABASE:-indiba_local}
+    DB_USERNAME: ${LOCAL_DB_USERNAME:-indiba}
+    DB_PASSWORD: ${LOCAL_DB_PASSWORD:-}
+    DB_CHARSET: utf8mb4
+    DB_SSL_CA: ""
+    CMS_ENABLED: "1"
+    CMS_BOOTSTRAP_FILE: /var/www/indiba/storage/local-admin-bootstrap.txt
+    CMS_INSTALL_FILE: /var/www/indiba/storage/local-cms-installed.json
+
 services:
+  db:
+    image: mysql:8.4
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_DATABASE: ${LOCAL_DB_DATABASE:-indiba_local}
+      MYSQL_USER: ${LOCAL_DB_USERNAME:-indiba}
+      MYSQL_PASSWORD: ${LOCAL_DB_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${LOCAL_DB_ROOT_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --host=127.0.0.1 --user=\"$$MYSQL_USER\" --database=\"$$MYSQL_DATABASE\" --execute='SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+    restart: unless-stopped
+
+  db-init:
+    <<: *app
+    command: ["php", "tools/cms-install.php"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: "no"
+
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *app
     ports:
       - "127.0.0.1:${PORT:-9000}:80"
-    volumes:
-      - type: bind
-        source: .
-        target: /var/www/indiba
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+volumes:
+  mysql-data:
+  php-sessions:

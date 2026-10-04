@@ -1,0 +1,20 @@
+# Optional separate stack using the existing credentials in pw.txt.
+name: indiba-remote
+
+services:
+  web:
+    image: indiba-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:${REMOTE_PORT:-9001}:80"
+    volumes:
+      - type: bind
+        source: .
+        target: /var/www/indiba
+      - php-sessions:/var/lib/php/sessions
+    restart: unless-stopped
+
+volumes:
+  php-sessions:

@@ -1,0 +1,6 @@
+.cms-page-banner{position:relative;isolation:isolate;min-height:300px;display:flex;align-items:center;background:#18333d center/cover no-repeat;color:#fff;padding:64px max(28px,calc((100% - 1000px)/2));box-sizing:border-box}
+.cms-page-banner::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.7),rgba(0,0,0,.2));z-index:-1}
+.cms-banner-copy{position:relative;z-index:2;color:#fff;padding:24px 0;max-width:900px}
+.cms-banner-copy h1{color:inherit;font-size:clamp(32px,5vw,56px);line-height:1.15;margin:0 0 20px}
+.cms-banner-copy p{color:inherit;font-size:clamp(16px,2vw,22px);line-height:1.6;margin:0;white-space:pre-line}
+@media(max-width:600px){.cms-page-banner{min-height:260px;padding:40px 24px}}

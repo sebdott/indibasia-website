@@ -10,13 +10,28 @@ Start Docker Desktop (Linux containers) or Docker Engine, then run from this dir
 make up
 ```
 
-Open **http://127.0.0.1:9000/**. To use another port, run `make up PORT=9001`.
+Open **http://127.0.0.1:9000/** or **http://127.0.0.1:9000/admin/**. `make up` generates private local credentials in `.env`, starts MySQL 8.4, applies migrations, seeds the downloaded content, and starts the website after initialization succeeds. To use another website port, run `make up PORT=9001`.
 
 Without Make, the equivalent command is:
 
 ```sh
-docker compose up -d --build --wait
+docker compose run --rm --build --no-deps web php tools/local-db-setup.php
+docker compose up -d --build --wait --wait-timeout 180 web
 ```
+
+Local MySQL is available to desktop database clients at **127.0.0.1:3307**. Its database name, username, and password are in `.env`; `MYSQL_PORT` changes the host port. MySQL data persists in the `indiba_mysql-data` Docker volume across container recreation and `make down`. Changing `.env` passwords does not change accounts already stored in that volume.
+
+The schema starts with the seven CMS tables inspected on the remote database. Versioned migration files live in `database/migrations/`; the content seeder lives in `database/seeders/`. Use `make db-migrate` to apply pending schema changes and `make db-seed` to add missing content. Both can be rerun; seeding keeps existing page edits, publication states, uploads, and administrator passwords. See [database/README.md](database/README.md) for details.
+
+The admin has separate **Pages**, **Master pages**, **News**, and **Events** sections with independent lists, searches, status counts, and Trash. Master pages contain archive screens that render listings, filters, or pagination, including News and Events landing pages and event brand/category filters. Fixed pages such as Home and Rehabilitation remain in Pages; individual news articles and events have their own sections. Migration `004_master_pages_and_events` identifies existing content from its original HTML without changing content, URLs, versions, or update dates. New news and event drafts default to `/news/` and `/events/` paths. The editor's **Content type** setting lets you move an item between sections, and changing its URL preserves its section. Duplicates and revisions retain the content type. Apply pending migrations to an existing installation before running this version of the admin.
+
+Docker uses the local database by default and leaves `pw.txt` unchanged. To run a separate instance against the remote credentials instead:
+
+```sh
+docker compose -f compose.remote.yaml up -d --build --wait web
+```
+
+That instance opens at **http://127.0.0.1:9001/** and depends on the remote database being reachable. Stop it with `docker compose -f compose.remote.yaml down`. Local seeding indexes downloaded snapshots; it does not copy edits or accounts from the remote database.
 
 The container runs PHP 8.4 with Apache and serves only `public/`. Compose mounts this project, so the downloaded assets, saved pages, and English dictionary are immediately available. Changes to files appear without rebuilding the image. Storage, the downloader, and local Windows tools stay outside the web document root.
 
@@ -47,15 +62,18 @@ make translation-merge FILES="translated/fr.json translated/es.json"
 
 The English management portal is available at **http://127.0.0.1:9000/admin/** after installation. It includes administrator sign-in, searchable pages, text and image editing, full HTML editing, new pages, draft/published status, an image/PDF library, uploads, activity history, and password changes.
 
+The portal uses locally hosted Roboto fonts, a dark navigation sidebar, and responsive layouts for desktop and mobile. Font files and their SIL Open Font License are bundled under `public/admin/fonts/`; loading the portal requires no external font service. Editor controls and the preview banner use Roboto while page previews retain the public website's typography.
+
 Database credentials are read from `pw.txt` outside the web document root. The existing Apache `SetEnv DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, and `DB_CHARSET` format is supported. Environment variables with those names override the file. An optional `DB_SSL_CA` value supplies a CA certificate path for MySQL TLS. `pw.txt` is excluded from Git and Docker builds; keep it private on the server.
 
 ```sh
 make up
 make db-check
-make cms-install
+make db-migrate
+make db-seed
 ```
 
-Installation creates only tables beginning with `indiba_cms_` and indexes the existing downloaded pages and assets. It can be rerun without overwriting portal edits or administrator passwords. The first installation creates an `admin` account and writes its random initial password to `storage/admin-bootstrap.txt`. Open that file locally to sign in, then change the password in **Your account**. The bootstrap file is removed after changing the password.
+Installation creates only tables beginning with `indiba_cms_` and indexes the existing downloaded pages and assets. It can be rerun without overwriting portal edits or administrator passwords. The first local installation creates an `admin` account and writes its random initial password to `storage/local-admin-bootstrap.txt`. Open that file locally to sign in, then change the password in **Your account**. The bootstrap file is removed after changing the password. The standalone installer defaults to `storage/admin-bootstrap.txt`; `CMS_BOOTSTRAP_FILE` changes this path. `make cms-install` remains a shortcut for running migrations and seeding together.
 
 Use **Pages** to manage content with All pages, Published, Drafts, and Trash tabs. Search and filter by region or page group, sort the list, and select pages for bulk publishing, draft status, or Trash. Duplicate makes a separate draft. Trash hides a page without deleting its content; restoring returns it to draft status. Regional homepages cannot be moved to Trash.
 
@@ -63,11 +81,13 @@ The default **Classic editor** uses locally hosted TinyMCE 8.9.2. It edits the m
 
 The Classic editor has **Visual** and **Code** buttons above the content. Code edits the main content's HTML, keeps unsaved changes when switching views, and supports Add media and saving directly. Switching back to Visual or saving applies the editor's HTML filtering. The separate **HTML source** tab edits the full page document.
 
-Classic editing retains the outer page layout, header, and footer. Original scripts, styles, forms, SVG icons, and embedded widgets are represented by protected content in the editor and restored from the current server-side page when saving. No-op classic saves do not replace the main content with TinyMCE's normalized markup. Pages without a recognized main content container can use the other editing modes.
+Classic editing retains the outer page layout, header, and footer. The banner is edited in **Banner header** and hidden from the Classic editor, which shows the page body. Saving body changes preserves the banner, including when replacing the body in Code view. Original scripts, styles, forms, SVG icons, and embedded widgets are represented by protected content in the editor and restored from the current server-side page when saving. No-op classic saves do not replace the main content with TinyMCE's normalized markup. Pages without a recognized main content container can use the other editing modes.
 
 The **Simple editor** edits individual headings and paragraphs with formatting. New and duplicated pages can add paragraph, heading, and quote blocks. **All text & images** also exposes navigation, footer, button text, and labels. **HTML source** remains available for full document and background-image changes. Use **Choose image** to select a file directly from the media library. Editing a page does not update the translation dictionary automatically, and navigation/footer edits affect that individual page.
 
 TinyMCE is bundled under `public/vendor/tinymce/` in GPL mode, with its original license file. No cloud API key, third-party editor account, or Node runtime is required to run the PHP site. The files are copied into the Docker image. `public/cms-content.css` styles columns, callouts, buttons, captions, and tables on the public site. Existing portal accounts and database schema continue to work without a new migration.
+
+Every editor includes a **Banner header** panel for Pages, Master pages, News, and Events. Existing banner images and wording are loaded from the page, including CSS background images. Use **Choose featured image** to select media, paste an HTTPS image URL, or remove the image, then edit the banner title, subtitle, description, and existing button text. Choosing an image on a video banner replaces its video background when saved. Responsive banner copies have their own controls. New drafts include a banner; pages without a recognized banner can add one through the same panel. Banner edits are saved with the page HTML, so previews, duplicates, revisions, and restoring original content retain the same behavior without a schema migration.
 
 Page settings include a group, page path, search title, and search description. Changing a path creates a permanent redirect from the previous URL. Regional homepage paths remain fixed. New paths must remain English and cannot use reserved admin, asset, or foreign-language prefixes.
 
@@ -75,7 +95,7 @@ Save a published page to make its changes visible immediately. Draft and trashed
 
 Every content or status change keeps the previous page version in **Revision history**. Restoring a version saves it as a draft, keeps the current path, and records the version it replaced. **Restore original content** returns a downloaded page to its saved snapshot while preserving the replaced content in history. Revisions contain page content and metadata; media files are kept separately on disk.
 
-For an existing portal, `make cms-upgrade` adds the page management columns, revisions table, and URL redirects table without re-importing content or resetting accounts. Fresh `make cms-install` installations include these automatically.
+For an existing portal, `make cms-upgrade` runs pending migrations without re-importing content or resetting accounts. The migration runner adopts the existing tables, adds missing page management columns, revisions, and redirects, and records applied versions in `indiba_cms_migrations`. Fresh `make up` or `make cms-install` installations include these automatically.
 
 Use **Media library** to find existing files or upload JPG, PNG, WebP, GIF, and PDF files up to 20 MB. Copy a file URL into the page editor. Uploads are stored in `public/uploads/`; the database stores their metadata. The page editor changes ordinary image elements; CSS background images and links can be changed using HTML source.
 
@@ -83,7 +103,11 @@ The database stores page titles, publication state, administrator hashes, media 
 
 Login uses password hashes, session expiry, CSRF protection, and throttling. Page saves reject conflicting versions. Upload types are checked on the server and executable upload extensions are blocked by Apache. The portal does not enable the source website's checkout, account system, or contact-submission backend.
 
-Portal browser tests run against a separate local database and web container on port 9002, with an isolated import manifest; `tools/check-cms.cjs` and `tools/check-classic.cjs` must not be pointed at the running site on port 9000. `php tools/check-classic.php` checks protected original markup and content filtering without writing to the database. Screenshots and test results are saved under `storage/`.
+Admin sessions persist in the stack's `php-sessions` Docker volume across container rebuilds. The local and remote stacks keep separate session volumes, and each portal port uses a separate session cookie. Sessions still expire after 30 minutes of inactivity. An expired form returns HTTP 403 with a refreshed form for retrying; editor uploads receive a JSON error. Reopen `/admin/` after the first update to this session configuration to load a fresh sign-in form.
+
+`node tools/check-admin-sessions.cjs` checks expired-form recovery and CSRF rejection using the local bootstrap credentials. Add `--recreate` to verify sessions across recreation of the local web container; this temporarily restarts the website. `CMS_SESSION_SECONDARY_URL` optionally checks cookie isolation against a second local portal port.
+
+Portal browser tests run against a separate local database and web container on port 9002, with an isolated import manifest; `tools/check-cms.cjs`, `tools/check-classic.cjs`, and `tools/check-banners.cjs` must not be pointed at the running site on port 9000. `php tools/check-classic.php` checks protected original markup and content filtering without writing to the database. `php tools/check-banners.php` checks banner discovery, wording, featured images, and combined Classic edits without database writes. Screenshots and test results are saved under `storage/`.
 
 ## Run on this Windows machine
 
@@ -91,7 +115,7 @@ Portal browser tests run against a separate local database and web container on 
 .\start.ps1
 ```
 
-Open **http://127.0.0.1:8082/**. Keep the terminal open while using the site. You can select another port with `./start.ps1 -Port 9000`.
+Run `make up` first to prepare local MySQL and `.env`. The script uses those local database settings and serves PHP directly on Windows at **http://127.0.0.1:8082/**. Keep the terminal open while using the site. You can select another port with `./start.ps1 -Port 9000`. Use `./start.ps1 -RemoteDatabase` to use the original remote credentials instead.
 
 The homepage follows the Asia version served by the source site from Malaysia. The other English regional homepage is `/us/`. The original English root URLs are also retained. Spanish, French, and Italian pages and navigation options are excluded.
 
@@ -129,7 +153,7 @@ The downloader also supports `--max-pages=20`, `--seed=https://indiba.com/asia/`
 
 ## Deploy
 
-Upload `config.php`, `lib/`, `locales/en.json`, `public/`, and `storage/manifest.json` plus `storage/pages/`. Set the web server's document root to **public/**. Keep storage and tools outside the document root. Apache can use the included `.htaccess`; other servers must route nonexistent files to `public/index.php`. No deployment was performed as part of creating this copy.
+Upload `config.php`, `lib/`, `database/`, `tools/`, `locales/en.json`, `public/`, and `storage/manifest.json` plus `storage/pages/`. Set the web server's document root to **public/**. Keep storage, database scripts, and tools outside the document root. Apache can use the included `.htaccess`; other servers must route nonexistent files to `public/index.php`. No deployment was performed as part of creating this copy.
 
 Do not upload `.tools/`: it contains the portable Windows PHP runtime and local browser tooling used here. Downloaded assets are in `public/assets/`, outside source control. Original snapshots and crawl state are in `storage/`.
 

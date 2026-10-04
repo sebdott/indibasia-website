@@ -23,7 +23,7 @@ const assert = require('node:assert/strict');
     assert.match(await page.locator('.error').innerText(), /incorrect/); pass('Incorrect credentials rejected');
     await page.locator('[name=username]').fill('admin'); await page.locator('[name=password]').fill(password);
     await page.getByRole('button', {name:'Sign in',exact:true}).click(); await page.waitForURL(base + '/admin/');
-    assert.equal(await page.locator('.stats .stat').count(), 4); pass('Administrator login and overview');
+    assert.equal(await page.locator('.stats .stat').count(), 6); pass('Administrator login and overview');
     await page.screenshot({path:'storage/admin-desktop.png',fullPage:true});
     await page.goto(base + '/admin/?view=new');
     await page.locator('[name=title]').fill('CMS integration test'); await page.locator('[name=route]').fill('/cms-integration-test/');

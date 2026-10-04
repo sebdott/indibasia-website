@@ -4,7 +4,7 @@ require_once __DIR__ . '/cms-management.php';
 
 function cmsClassicTarget(DOMDocument $document): ?DOMElement {
     $xpath = new DOMXPath($document);
-    foreach (['//main', '//*[@data-elementor-type="wp-page"]', '//*[@id="content"]', '//*[@role="main"]'] as $query) {
+    foreach (['//main', '//*[@data-elementor-type="wp-page"]', '//*[@id="content"]', '//*[@role="main"]', '//*[@id="main"]'] as $query) {
         $node = $xpath->query($query)->item(0); if ($node instanceof DOMElement) return $node;
     }
     return null;
@@ -12,11 +12,27 @@ function cmsClassicTarget(DOMDocument $document): ?DOMElement {
 
 function cmsClassicPrepare(DOMDocument $document): array {
     $copy = clone $document; $target = cmsClassicTarget($copy);
-    if (!$target) return ['available'=>false, 'content'=>'', 'locks'=>[], 'styles'=>'', 'css'=>[], 'body_class'=>''];
-    $xpath = new DOMXPath($copy); $styles = ''; $css = []; $locks = [];
+    if (!$target) return ['available'=>false, 'content'=>'', 'locks'=>[], 'banner_locks'=>[], 'styles'=>'', 'css'=>[], 'body_class'=>''];
+    $xpath = new DOMXPath($copy); $styles = ''; $css = []; $locks = []; $bannerLocks = [];
     foreach ($xpath->query('//style') as $node) $styles .= $node->textContent . "\n";
     foreach ($xpath->query('//link[contains(@rel,"stylesheet")][@href]') as $node) {
         $url = $node->getAttribute('href'); if (str_starts_with($url, '/assets/') && !str_contains($url, '..')) $css[] = $url;
+    }
+    // Keep banners in their original positions while exposing only body content.
+    // Lock the entire banner before its scripts/widgets to avoid overlapping locks.
+    foreach (cmsBannerTargets($copy) as $banner) {
+        $inside = false;
+        for ($parent = $banner->parentNode; $parent; $parent = $parent->parentNode) {
+            if ($parent->isSameNode($target)) { $inside = true; break; }
+        }
+        if (!$inside) continue;
+        $key = hash('sha256', 'banner:' . $banner->getNodePath());
+        $locks[$key] = $copy->saveHTML($banner); $bannerLocks[$key] = true;
+        $placeholder = $copy->createElement('span');
+        $placeholder->setAttribute('data-cms-lock', $key); $placeholder->setAttribute('class', 'cms-protected mceNonEditable');
+        $placeholder->setAttribute('contenteditable', 'false'); $placeholder->setAttribute('data-cms-hidden', '1');
+        $placeholder->appendChild($copy->createTextNode('Banner header'));
+        $banner->parentNode->replaceChild($placeholder, $banner);
     }
     $query = './/*[self::script or self::style or self::svg or self::form or self::iframe or self::object or self::embed][not(ancestor::form or ancestor::svg or ancestor::iframe or ancestor::object)]';
     foreach (iterator_to_array($xpath->query($query, $target)) as $node) {
@@ -28,7 +44,7 @@ function cmsClassicPrepare(DOMDocument $document): array {
         $node->parentNode->replaceChild($placeholder,$node);
     }
     $body = $copy->getElementsByTagName('body')->item(0);
-    return ['available'=>true,'content'=>cmsInnerHtml($target),'locks'=>$locks,'styles'=>$styles,'css'=>array_values(array_unique($css)),'body_class'=>($body?->getAttribute('class') ?? '') . ' ' . $target->getAttribute('class')];
+    return ['available'=>true,'content'=>cmsInnerHtml($target),'locks'=>$locks,'banner_locks'=>$bannerLocks,'styles'=>$styles,'css'=>array_values(array_unique($css)),'body_class'=>($body?->getAttribute('class') ?? '') . ' ' . $target->getAttribute('class')];
 }
 
 function cmsClassicSafeUrl(string $url, bool $link = false): bool {
@@ -73,11 +89,15 @@ function cmsClassicApply(DOMDocument $document, string $html): void {
         foreach (iterator_to_array($lockRoot->childNodes) as $child) $placeholder->parentNode->insertBefore($fragment->importNode($child,true),$placeholder);
         $placeholder->parentNode->removeChild($placeholder);
     }
+    $missingBanners = $fragment->createDocumentFragment();
     foreach ($state['locks'] as $key=>$lockedHtml) if (!isset($used[$key])) {
         $lockDocument = cmsDocument('<!doctype html><html><body><div id="lock-root">' . $lockedHtml . '</div></body></html>');
         $lockRoot = (new DOMXPath($lockDocument))->query('//*[@id="lock-root"]')->item(0);
-        foreach (iterator_to_array($lockRoot->childNodes) as $child) $root->appendChild($fragment->importNode($child,true));
+        $destination = isset($state['banner_locks'][$key]) ? $missingBanners : $root;
+        foreach (iterator_to_array($lockRoot->childNodes) as $child) $destination->appendChild($fragment->importNode($child,true));
     }
+    // Replacing all body HTML in Code view must retain banners above the new body.
+    if ($missingBanners->hasChildNodes()) $root->insertBefore($missingBanners, $root->firstChild);
     while ($target->firstChild) $target->removeChild($target->firstChild);
     foreach (iterator_to_array($root->childNodes) as $child) $target->appendChild($document->importNode($child,true));
     $xpath = new DOMXPath($document);

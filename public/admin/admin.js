@@ -96,7 +96,14 @@ async function loadImages(append = false) {
             const label = document.createElement('span'); label.textContent = item.name;
             button.append(image,label); button.addEventListener('click', () => {
                 if (pickerCallback) {const callback = pickerCallback; pickerCallback = null; callback(item);}
-                else if (pickerTarget) {pickerTarget.value = item.path; const thumbnail = pickerTarget.closest('.image-edit')?.querySelector('img'); if (thumbnail) thumbnail.src = item.path; pickerTarget.dispatchEvent(new Event('input', {bubbles:true}));}
+                else if (pickerTarget) {
+                    pickerTarget.value = item.path;
+                    const container = pickerTarget.closest('.image-edit'); const thumbnail = container?.querySelector('img');
+                    if (thumbnail) { thumbnail.src = item.path; thumbnail.alt = item.alt_text || ''; }
+                    const alt = container?.querySelector('input[name$="[alt]"]');
+                    if (alt) { alt.value = item.alt_text || ''; alt.dispatchEvent(new Event('input', {bubbles:true})); }
+                    pickerTarget.dispatchEvent(new Event('input', {bubbles:true}));
+                }
                 picker.close();
             }); results.append(button);
         });
@@ -110,14 +117,38 @@ document.getElementById('picker-query')?.addEventListener('keydown', event => {i
 document.getElementById('picker-more')?.addEventListener('click', () => {pickerPage++;loadImages(true);});
 
 document.querySelectorAll('[data-banner-image]').forEach(input => {
-    input.addEventListener('input', () => {
-        const preview = input.closest('.image-edit').querySelector('.banner-image-preview');
-        const image = preview.querySelector('img'); const empty = preview.querySelector('span');
-        const url = input.value.trim();
-        image.hidden = !url; empty.hidden = !!url;
-        if (url && (/^\/(?:assets|uploads)\//.test(url) || /^https:\/\//i.test(url))) image.src = url;
-        else image.removeAttribute('src');
+    const preview = input.closest('.image-edit').querySelector('.banner-image-preview');
+    const image = preview.querySelector('img'); const status = preview.querySelector('span');
+    const showStatus = message => {
+        image.hidden = true;
+        status.textContent = message; status.hidden = false;
+    };
+    const loaded = () => {
+        if (!image.getAttribute('src')) return;
+        image.hidden = false; status.hidden = true;
+    };
+    image.addEventListener('load', loaded);
+    image.addEventListener('error', () => {
+        if (image.getAttribute('src')) showStatus('Image could not be loaded. Check the URL or choose another image.');
     });
+    const updatePreview = () => {
+        const url = input.value.trim();
+        if (!url) {
+            image.removeAttribute('src'); showStatus('No featured image'); return;
+        }
+        if (!(/^\/(?:assets|uploads)\//.test(url) || /^https:\/\//i.test(url))) {
+            image.removeAttribute('src'); showStatus('Choose a local media URL or an HTTPS image URL.'); return;
+        }
+        showStatus('Loading image…');
+        if (image.getAttribute('src') !== url) image.src = url;
+        if (image.complete) {
+            if (image.naturalWidth > 0) loaded();
+            else showStatus('Image could not be loaded. Check the URL or choose another image.');
+        }
+    };
+    input.addEventListener('input', updatePreview);
+    input.addEventListener('change', updatePreview);
+    updatePreview();
 });
 document.querySelectorAll('[data-clear-image]').forEach(button => button.addEventListener('click', () => {
     const input = document.getElementById(button.dataset.clearImage);

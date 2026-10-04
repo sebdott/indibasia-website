@@ -7,7 +7,7 @@ try {
     $mode = in_array($_GET['mode'] ?? '', ['classic','visual','content','html'], true) ? $_GET['mode'] : 'classic';
     $classic = $mode === 'classic' ? cmsClassicPrepare($document) : null;
     [$texts, $images] = cmsEditable($document); $rich = cmsRichBlocks($document);
-    $banners = cmsBannerState($document);
+    $banners = cmsBannerState($document, $page['content_type']);
     $groups = $db->query('SELECT DISTINCT group_name FROM indiba_cms_pages ORDER BY group_name')->fetchAll(PDO::FETCH_COLUMN);
     $meta = (new DOMXPath($document))->query('//meta[translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="description"]')->item(0);
     $description = $page['meta_description'] ?? ($meta instanceof DOMElement ? $meta->getAttribute('content') : '');

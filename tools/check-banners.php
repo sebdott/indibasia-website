@@ -8,9 +8,13 @@ function bannerCheck(bool $condition, string $message): void {
 $root = dirname(__DIR__);
 $manifest = json_decode(file_get_contents($root . '/storage/manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 $image = '/uploads/banner-test.png';
-foreach (['/', '/about-us/', '/rehabilitation/', '/asia/products/ct8/', '/news/', '/us/events/', '/events/how-indiba-works-at-a-cellular-level/', '/asia/news/physiotherapy-for-cats-enhancing-feline-wellbeing-with-indibas-radiofrequency/'] as $route) {
+foreach (['/', '/about-us/', '/rehabilitation/', '/asia/products/ct8/', '/news/', '/us/events/', '/events/how-indiba-works-at-a-cellular-level/', '/us/events/indiba-compact-a-tool-for-treatment-and-business/', '/asia/news/physiotherapy-for-cats-enhancing-feline-wellbeing-with-indibas-radiofrequency/'] as $route) {
     $document = cmsDocument(file_get_contents($root . '/storage/' . $manifest['pages'][$route]['file']));
     $state = cmsBannerState($document); bannerCheck((bool)$state, 'Missing banner: ' . $route);
+    if (str_contains($route, '/events/indiba-compact-') || str_contains($route, '/events/how-indiba-') || str_contains($route, '/news/physiotherapy-for-cats-')) {
+        $featured = (new DOMXPath($document))->query('//meta[@property="og:image"]')->item(0)->getAttribute('content');
+        foreach ($state as $banner) bannerCheck($banner['image'] === $featured, 'News/event previews must select the declared featured attachment: ' . $route);
+    }
     if ($route !== '/') bannerCheck(in_array('Banner title', array_column(reset($state)['fields'], 'label'), true), 'Visible banner heading must be labeled as its title.');
     $before = cmsDocumentHtml($document); $submitted = [];
     foreach ($state as $key=>$banner) $submitted[$key] = ['image'=>$banner['image'], 'text'=>array_map(fn($field)=>$field['value'], $banner['fields'])];
@@ -46,6 +50,46 @@ foreach ([$image, '', '/uploads/second.png'] as $url) {
     bannerCheck(!$document->getElementsByTagName('img')->item(0)->hasAttribute('srcset'), 'Old responsive image source retained.');
 }
 echo "PASS Image elements support replacement, removal, and reselection\n";
+$document = cmsDocument(file_get_contents($root . '/storage/' . $manifest['pages']['/us/test22/']['file']));
+$state = cmsBannerState($document); $key = array_key_first($state); $banner = $state[$key];
+$xpath = new DOMXPath($document); $target = $xpath->query($banner['locator'])->item(0);
+$background = cmsBannerBackground($target, cmsBannerCss($document));
+$product = $xpath->query('.//img[@alt="reverso-device-final"]', $target)->item(0);
+bannerCheck($product instanceof DOMElement && $background !== '', 'Reverso fixture must include both a product image and a decorative background.');
+bannerCheck($banner['kind'] === 'image' && $banner['image'] === $product->getAttribute('src') && $banner['image'] !== $background, 'Featured image must select the Reverso product instead of its decorative background.');
+foreach ([$image, '', '/uploads/reselected-product.png'] as $url) {
+    cmsBannerApply($document, [$key=>['image'=>$url]], $state);
+    $document = cmsDocument(cmsDocumentHtml($document)); $state = cmsBannerState($document);
+    $target = (new DOMXPath($document))->query($state[$key]['locator'])->item(0);
+    bannerCheck($state[$key]['kind'] === 'image' && $state[$key]['image'] === $url, 'Reverso product image selection must survive replacement, removal, and reselection.');
+    $backgroundNode = $target->cloneNode(true); $backgroundNode->removeAttribute('data-cms-featured-image');
+    bannerCheck(cmsBannerBackground($backgroundNode, cmsBannerCss($document)) === $background, 'Product edits must preserve the decorative banner background.');
+}
+echo "PASS Reverso product image is selected, editable, and separate from its decorative background\n";
+$document = cmsDocument('<html><head></head><body><main><section data-cms-banner="header" data-cms-featured-kind="background" data-cms-featured-image="/uploads/saved-background.png"><h1>Heading</h1><img src="/assets/product.png"></section></main></body></html>');
+$state = cmsBannerState($document);
+bannerCheck(reset($state)['kind'] === 'background' && reset($state)['image'] === '/uploads/saved-background.png', 'Explicit saved background selections must remain selected.');
+$document = cmsDocument('<html><head></head><body><main><section data-cms-banner="header"><h1>Heading</h1><div hidden><img src="/assets/hidden-product.png"></div><img src="/assets/visible-product.png"></section></main></body></html>');
+$state = cmsBannerState($document);
+bannerCheck(reset($state)['image'] === '/assets/visible-product.png', 'Hidden images must not be selected ahead of visible images.');
+foreach ([$image, '', '/uploads/visible-product.png'] as $url) {
+    cmsBannerApply($document, [array_key_first($state)=>['image'=>$url]], $state);
+    $document = cmsDocument(cmsDocumentHtml($document)); $state = cmsBannerState($document);
+    bannerCheck(reset($state)['image'] === $url, 'The selected foreground image must remain selected when other hidden images precede it.');
+}
+echo "PASS Explicit background choices and hidden foreground images are handled correctly\n";
+$document = cmsDocument('<html><head><meta property="og:image" content="javascript:alert(1)"><meta name="twitter:image" content="/assets/featured.png"></head><body class="single-news"><main><section data-cms-banner="header" style="background-image:url(/assets/pattern.png)"><h1>News title</h1></section></main></body></html>');
+$state = cmsBannerState($document);
+bannerCheck(reset($state)['image'] === '/assets/featured.png', 'Unsafe metadata images must be skipped for a valid featured attachment.');
+$pageState = cmsBannerState($document, 'page');
+bannerCheck(reset($pageState)['image'] === '/assets/pattern.png', 'Metadata fallback must respect the current content section.');
+$state = cmsBannerState($document); $key = array_key_first($state);
+foreach ([$image, '', '/uploads/reselected-featured.png'] as $url) {
+    cmsBannerApply($document, [$key=>['image'=>$url]], $state);
+    $document = cmsDocument(cmsDocumentHtml($document)); $state = cmsBannerState($document);
+    bannerCheck($state[$key]['image'] === $url, 'Saved and removed featured images must take precedence over metadata.');
+}
+echo "PASS News/event metadata fallback, section selection, replacement, and removal\n";
 foreach (['javascript:alert(1)', '/assets/../private.png', 'http://example.com/image.png'] as $url) {
     $state = cmsBannerState($document); $rejected = false;
     try { cmsBannerApply($document, [array_key_first($state)=>['image'=>$url]], $state); } catch (RuntimeException $e) { $rejected = true; }

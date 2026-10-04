@@ -64,8 +64,9 @@
     }
   }, true);
   document.addEventListener('submit', event => {
-    event.preventDefault(); event.stopImmediatePropagation();
     const form = event.target;
+    if (form.matches('.recovered-filters') && form.method === 'get' && new URL(form.action, location.href).origin === location.origin) return;
+    event.preventDefault(); event.stopImmediatePropagation();
     let message = form.querySelector('.mirror-form-message');
     if (!message) { message = document.createElement('p'); message.className = 'mirror-form-message'; message.setAttribute('role', 'status'); form.append(message); }
     message.textContent = translations.ui_form_unavailable || 'This form is unavailable in the local copy.';

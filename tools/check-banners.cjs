@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
     const page = await context.newPage(); const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
-    const go = async path => { assert.equal((await page.goto(base + path)).status(), 200); };
+    const go = async path => { assert.equal((await page.goto(base + path, { waitUntil: 'domcontentloaded' })).status(), 200); };
     const save = async () => {
       await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
       await page.waitForLoadState(); assert.equal(await page.locator('.error').count(), 0);
@@ -22,9 +22,10 @@ const assert = require('node:assert/strict');
     await go('/admin/'); await page.locator('[name=username]').fill('admin'); await page.locator('[name=password]').fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click(); await page.waitForURL(base + '/admin/');
     await go('/admin/?view=media');
+    await page.getByRole('button', { name: '+ Add new media file', exact: true }).click();
     await page.locator('[name=file]').setInputFiles({ name: 'banner-regression.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jbuQAAAAASUVORK5CYII=', 'base64') });
     await page.getByRole('button', { name: 'Upload file', exact: true }).click(); await page.waitForURL(/filter=uploads/);
-    const image = await page.locator('.media-card input').first().inputValue();
+    const image = await page.locator('.media-card input[aria-label="File URL"]').first().inputValue();
     for (const [view, route] of [['pages', '/asia/products/ct8/'], ['master', '/news/'], ['news', '/asia/news/physiotherapy-for-cats-enhancing-feline-wellbeing-with-indibas-radiofrequency/'], ['events', '/events/how-indiba-works-at-a-cellular-level/']]) {
       await go('/admin/?view=' + view + '&q=' + encodeURIComponent(route));
       const editPath = await page.locator('a.page-title').first().getAttribute('href');
@@ -38,14 +39,24 @@ const assert = require('node:assert/strict');
       await page.locator('#picker-query').fill('banner-regression'); await page.getByRole('button', { name: 'Search', exact: true }).click();
       await page.locator('.picker-image').first().click();
       assert.equal(await page.locator('[data-banner-image]').first().inputValue(), image);
+      await page.waitForFunction(() => { const image = document.querySelector('.banner-image-preview img'); return image.complete && image.naturalWidth > 0; });
       assert.ok(await page.locator('.banner-image-preview img').first().isVisible());
       await save();
       assert.equal(await page.locator('[data-banner-image]').first().inputValue(), image);
       assert.equal(await page.locator('.banner-panel textarea[name*="[text]"]').first().inputValue(), 'Banner wording for ' + view);
       const preview = await context.newPage(); await preview.goto(base + editPath.replace('view=edit', 'view=preview'));
       assert.ok((await preview.content()).includes('Banner wording for ' + view));
-      const background = await preview.locator('[data-cms-featured-image]').first().evaluate(node => getComputedStyle(node).backgroundImage);
-      assert.ok(background.includes(image), background);
+      const featured = preview.locator('[data-cms-featured-image]').first();
+      if (await featured.getAttribute('data-cms-featured-kind') === 'image') {
+        const product = featured.locator('img').first();
+        assert.equal(await product.getAttribute('src'), image);
+        await product.scrollIntoViewIfNeeded();
+        await product.evaluate(img => img.decode());
+        assert.ok(await product.isVisible());
+      } else {
+        const background = await featured.evaluate(node => getComputedStyle(node).backgroundImage);
+        assert.ok(background.includes(image), background);
+      }
       await preview.close();
       if (view === 'news') {
         await page.screenshot({ path: 'storage/admin-banner-desktop.png', fullPage: false });
@@ -58,7 +69,7 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('[data-banner-image]').first().inputValue(), '');
       assert.ok(!(await page.locator('.banner-image-preview img').first().isVisible()));
       await save(); assert.equal(await page.locator('[data-banner-image]').first().inputValue(), '');
-      console.log('PASS ' + view + ': existing banner, picker, save, preview background, wording, and image removal');
+      console.log('PASS ' + view + ': existing banner, picker, save, preview image, wording, and image removal');
     }
     for (const type of ['page', 'master', 'news', 'event']) {
       await go('/admin/?view=new&content_type=' + type); await page.locator('[name=title]').fill('New banner ' + type);

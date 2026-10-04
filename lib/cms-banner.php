@@ -101,15 +101,41 @@ function cmsBannerBackground(DOMElement $node, string $css): string {
     return '';
 }
 
-function cmsBannerState(DOMDocument $document): array {
+function cmsBannerFeaturedImage(DOMDocument $document, ?string $contentType = null): string {
+    if ($contentType === null) {
+        $classes = preg_split('/\s+/', $document->getElementsByTagName('body')->item(0)?->getAttribute('class') ?? '');
+        $contentType = in_array('single-news', $classes, true) ? 'news' : (in_array('single-events', $classes, true) ? 'event' : 'page');
+    }
+    if (!in_array($contentType, ['news', 'event'], true)) return '';
+    $xpath = new DOMXPath($document);
+    foreach (['//meta[@property="og:image"]', '//meta[@name="twitter:image"]'] as $query) {
+        foreach ($xpath->query($query) as $meta) {
+            try { return cmsImageUrl($meta->getAttribute('content')); }
+            catch (RuntimeException $e) { /* Try the next declared featured image. */ }
+        }
+    }
+    return '';
+}
+
+function cmsBannerState(DOMDocument $document, ?string $contentType = null): array {
     $xpath = new DOMXPath($document); $state = []; $css = cmsBannerCss($document);
+    $featuredImage = cmsBannerFeaturedImage($document, $contentType);
     foreach (cmsBannerTargets($document) as $target) {
         $locator = cmsBannerLocator($target); $key = hash('sha256', $locator);
         $imageNode = $target; $image = cmsBannerBackground($target, $css); $kind = 'background';
-        if ($target->getAttribute('data-cms-featured-kind') === 'image' || ($image === '' && !$target->hasAttribute('data-cms-featured-image'))) {
-            $img = $xpath->query('.//img[@src][not(ancestor::a)]', $target)->item(0);
-            if ($img instanceof DOMElement) { $imageNode = $img; $image = $img->getAttribute('src'); $kind = 'image'; }
+        // A foreground image is the main visual when a hero also has a decorative background.
+        // Keep explicit saved choices, including removed images, tied to their original element.
+        $savedImage = $target->getAttribute('data-cms-featured-kind') === 'image';
+        if ($savedImage || !$target->hasAttribute('data-cms-featured-image')) {
+            $savedNode = $savedImage ? $xpath->query('.//img[@src=' . cmsBannerXPathValue($image) . '][not(ancestor::a)]', $target)->item(0) : null;
+            foreach ($savedNode ? [$savedNode] : $xpath->query('.//img[@src][not(ancestor::a)]', $target) as $img) {
+                if (!$savedImage && (cmsBannerHidden($img) || trim($img->getAttribute('src')) === '')) continue;
+                $imageNode = $img; $image = $img->getAttribute('src'); $kind = 'image'; break;
+            }
         }
+        // News/event title strips often contain only a decorative pattern.
+        // Their attachment thumbnail lives in metadata rather than in the title strip.
+        if ($kind === 'background' && !$target->hasAttribute('data-cms-featured-image') && $featuredImage !== '') $image = $featuredImage;
         $fields = []; $titleSeen = false;
         $nodes = $xpath->query('.//text()[ancestor::h1 or ancestor::h2 or ancestor::h3 or ancestor::h4 or ancestor::h5 or ancestor::h6 or ancestor::p or ancestor::a or ancestor::button][not(ancestor::script or ancestor::style or ancestor::svg or ancestor::form)]', $target);
         if (preg_match('/^h[1-6]$/', $target->tagName)) $nodes = $xpath->query('.//text()', $target);

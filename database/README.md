@@ -12,6 +12,8 @@ Run `make db-migrate`, or `php tools/db-migrate.php` with the desired database e
 - `migrations/002_page_management.php` adds search metadata and groups to pages, then creates revisions and redirects.
 - `migrations/003_separate_news.php` adds a persistent `content_type` and an index for separate admin lists, and classifies existing news routes without changing content or update dates.
 - `migrations/004_master_pages_and_events.php` separates archive listing/filter screens into Master pages, individual news articles into News, and individual event entries into Events, using original HTML. Existing content, versions, and update dates are preserved.
+- `migrations/005_media_library.php` adds attachment titles, alternative text, captions, descriptions, upload authors, and reversible media Trash. Existing media paths and files are preserved.
+- `migrations/006_user_management.php` adds display names, optional email, Administrator/Editor roles, active/inactive status, account/session versions, and last sign-in times. Existing accounts retain their usernames, passwords, and active Administrator access.
 
 The first two migrations reproduce the seven application tables read from the remote database using `SHOW CREATE TABLE`. Later migrations add portal features, including the `page`/`master`/`news`/`event` content types. No foreign keys have been added because the existing schema has none. `indiba_cms_migrations` is an additional migration-history table.
 

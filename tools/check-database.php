@@ -15,9 +15,9 @@ function databaseCheck(bool $condition, string $message): void {
 try {
     $db = database();
     databaseCheck($db->query('SHOW TABLES')->fetchAll() === [], 'Start these checks with an empty isolated test database.');
-    databaseCheck(databaseMigrate($db) === 4, 'Fresh database did not apply all migrations.');
+    databaseCheck(databaseMigrate($db) === 6, 'Fresh database did not apply all migrations.');
     databaseCheck(count($db->query('SHOW TABLES')->fetchAll()) === 8, 'Expected seven CMS tables plus migration history.');
-    databaseCheck((int)$db->query('SELECT COUNT(*) FROM indiba_cms_migrations')->fetchColumn() === 4, 'Migration history is incomplete.');
+    databaseCheck((int)$db->query('SELECT COUNT(*) FROM indiba_cms_migrations')->fetchColumn() === 6, 'Migration history is incomplete.');
     databaseCheck(databaseMigrate($db) === 0, 'A migration ran more than once.');
     echo "PASS fresh schema and migration tracking\n";
 
@@ -41,6 +41,8 @@ try {
     databaseCheck(is_string($bootstrap) && is_file($bootstrap), 'Private administrator credentials were not written.');
     $bootstrapHash = hash_file('sha256', $bootstrap);
     $passwordHash = $db->query('SELECT password_hash FROM indiba_cms_users LIMIT 1')->fetchColumn();
+    $initialUser = $db->query('SELECT * FROM indiba_cms_users LIMIT 1')->fetch();
+    databaseCheck($initialUser['role'] === 'admin' && $initialUser['status'] === 'active' && (int)$initialUser['session_version'] === 1, 'Initial administrator access is incorrect.');
     $id = $db->query('SELECT id FROM indiba_cms_pages ORDER BY id LIMIT 1')->fetchColumn();
     $db->prepare('UPDATE indiba_cms_pages SET title = ?, html = ?, status = ?, version = 9 WHERE id = ?')->execute([
         'Existing edited draft', '<!doctype html><html><body>Preserve this edit.</body></html>', 'draft', $id,
@@ -57,16 +59,21 @@ try {
     echo "PASS seed reruns preserve page edits, drafts, versions, and passwords\n";
 
     // Emulate the original five-table installation before page management.
+    $db->exec("UPDATE indiba_cms_media SET title = 'Preserved attachment title', alt_text = 'Preserved alternative text', caption = 'Preserved caption', description = 'Preserved description', trashed_at = CURRENT_TIMESTAMP ORDER BY id LIMIT 1");
+    $mediaBefore = $db->query('SELECT * FROM indiba_cms_media ORDER BY id')->fetchAll();
     $allContentBefore = $db->query('SELECT id, route, title, html, status, version, updated_at, content_type FROM indiba_cms_pages ORDER BY id')->fetchAll();
+    $db->exec('ALTER TABLE indiba_cms_users DROP COLUMN display_name, DROP COLUMN email, DROP COLUMN role, DROP COLUMN status, DROP COLUMN version, DROP COLUMN session_version, DROP COLUMN last_login_at');
     foreach (['migrations', 'revisions', 'redirects'] as $table) $db->exec('DROP TABLE indiba_cms_' . $table);
     $db->exec('ALTER TABLE indiba_cms_pages DROP INDEX type_status_updated, DROP COLUMN content_type, DROP COLUMN seo_title, DROP COLUMN meta_description, DROP COLUMN group_name');
-    databaseCheck(databaseMigrate($db) === 4, 'An existing installation could not be adopted.');
+    databaseCheck(databaseMigrate($db) === 6, 'An existing installation could not be adopted.');
     $columns = $db->query('SHOW COLUMNS FROM indiba_cms_pages')->fetchAll(PDO::FETCH_COLUMN);
     databaseCheck(count(array_intersect(['seo_title', 'meta_description', 'group_name'], $columns)) === 3, 'Legacy page management columns were not upgraded.');
     $pageQuery->execute([$id]);
     databaseCheck($pageQuery->fetch() === $pageBefore, 'Migration changed existing page content.');
     databaseCheck($db->query('SELECT id, route, title, html, status, version, updated_at, content_type FROM indiba_cms_pages ORDER BY id')->fetchAll() === $allContentBefore, 'News migration changed content, publication state, versions, or update dates.');
     databaseCheck($db->query('SELECT password_hash FROM indiba_cms_users LIMIT 1')->fetchColumn() === $passwordHash, 'Migration changed existing credentials.');
+    databaseCheck($db->query('SELECT * FROM indiba_cms_users LIMIT 1')->fetch() === $initialUser, 'Migration changed existing account details or administrator access.');
+    databaseCheck($db->query('SELECT * FROM indiba_cms_media ORDER BY id')->fetchAll() === $mediaBefore, 'Migration changed attachment metadata or Trash state.');
     echo "PASS legacy schema adoption preserves existing data\n";
 
     $record = $db->query('SELECT migration, checksum FROM indiba_cms_migrations ORDER BY migration LIMIT 1')->fetch();

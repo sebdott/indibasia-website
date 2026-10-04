@@ -55,6 +55,8 @@ if ($asset && is_file($config['public'] . $asset['local'])) sendFile($config['pu
 $key = $path === '/' ? '/' : rtrim($path, '/') . '/';
 require_once dirname(__DIR__) . '/lib/cms.php';
 if (cmsServePage($key)) exit;
+require_once dirname(__DIR__) . '/lib/site-repairs.php';
+if (siteServeRepair($key)) exit;
 $page = $manifest['pages'][$key] ?? ($key === '/' ? ($manifest['pages'][$config['home']] ?? null) : null);
 if ($page && is_file($config['storage'] . '/' . $page['file'])) sendFile($config['storage'] . '/' . $page['file'], 'text/html; charset=utf-8');
 http_response_code(404); header('Content-Type: text/html; charset=utf-8');

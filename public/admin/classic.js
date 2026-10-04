@@ -55,7 +55,7 @@
         automatic_uploads:true, images_upload_handler:upload,
         files_upload_handler:async (blob,progress)=>({url:await upload(blob,progress),fileName:blob.filename()}),
         documents_file_types:[{mimeType:'application/pdf',extensions:['pdf']}],
-        file_picker_types:'file image media', file_picker_callback:(callback,value,meta)=>window.cmsOpenMediaPicker(item=>callback(item.path,{alt:item.name,text:item.name,title:item.name}),meta.filetype),
+        file_picker_types:'file image media', file_picker_callback:(callback,value,meta)=>window.cmsOpenMediaPicker(item=>callback(item.path,{alt:item.alt_text || '',text:item.name,title:item.name}),meta.filetype),
         convert_urls:false, relative_urls:false, remove_script_host:false,
         noneditable_class:'mceNonEditable',
         extended_valid_elements:'div[*],span[*],section[*],article[*],picture[*],source[*],details[*],summary[*],iframe[src|width|height|title|allow|allowfullscreen|sandbox|loading|referrerpolicy]',
@@ -66,7 +66,7 @@
         style_formats_merge:true,
         setup(editor) {
             editor.ui.registry.addButton('cmslibrary',{text:'Media library',tooltip:'Insert an image or file from the media library',onAction:()=>window.cmsOpenMediaPicker(item=>{
-                if(item.mime?.startsWith('image/'))editor.insertContent('<p><img src="'+escape(item.path)+'" alt="'+escape(item.name)+'"></p>');
+                if(item.mime?.startsWith('image/'))editor.insertContent('<p><img src="'+escape(item.path)+'" alt="'+escape(item.alt_text || '')+'"></p>');
                 else editor.insertContent('<p><a href="'+escape(item.path)+'">'+escape(item.name)+'</a></p>');
             },'file')});
             editor.ui.registry.addMenuButton('cmscolumns',{text:'Columns',fetch:callback=>callback([2,3].map(count=>({type:'menuitem',text:count+' columns',onAction:()=>editor.insertContent('<div class="cms-content-columns'+(count===3?' cms-three-columns':'')+'">'+Array.from({length:count},(_,i)=>'<div><h3>Column '+(i+1)+'</h3><p>Add your content here.</p></div>').join('')+'</div><p></p>')})))});
@@ -78,7 +78,7 @@
     }).catch(()=>{status.textContent='The classic editor could not load. Reload the page or use another editor tab.';});
     document.getElementById('classic-add-media')?.addEventListener('click',()=>{const editor=tinymce.get('classic-content');window.cmsOpenMediaPicker(item=>{
         if(!editor?.initialized || busy)return;
-        const html=item.mime?.startsWith('image/')?'<p><img src="'+escape(item.path)+'" alt="'+escape(item.name)+'"></p>':'<p><a href="'+escape(item.path)+'">'+escape(item.name)+'</a></p>';
+        const html=item.mime?.startsWith('image/')?'<p><img src="'+escape(item.path)+'" alt="'+escape(item.alt_text || '')+'"></p>':'<p><a href="'+escape(item.path)+'">'+escape(item.name)+'</a></p>';
         if(codeMode){code.setRangeText(html,code.selectionStart,code.selectionEnd,'end');markChanged();code.focus();}
         else editor.insertContent(html);
     },'file');});

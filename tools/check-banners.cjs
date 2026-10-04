@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
     await context.route('**/*', route => ['127.0.0.1', 'localhost'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
     const page = await context.newPage(); const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    page.on('dialog', dialog => dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
     const go = async path => { assert.equal((await page.goto(base + path)).status(), 200); };
     const save = async () => {
       await page.getByRole('button', { name: 'Save changes', exact: true }).first().click();
